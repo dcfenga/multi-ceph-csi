@@ -1,0 +1,21 @@
+---
+apiVersion: v1
+kind: ConfigMap
+data:
+  # FDC: 更新配置
+  config.json: |-
+    [
+      {
+        "clusterID": "62309c14-7a78-11eb-ab96-525400d1f5ab",
+        "monitors": [
+          "192.168.122.61",
+          "192.168.122.62",
+          "192.168.122.63"
+        ]
+      }
+    ]
+metadata:
+  # FDC： 更新ceph-csi-config的名字
+  name: external-ceph-csi-config
+  # FDC: 增加命名空间
+  namespace: multi-csi
