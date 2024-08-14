@@ -3,8 +3,7 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: csi-cephfsplugin
-  # FDC: 增加命名空间
-  namespace: multi-csi
+  namespace: nebula-system
 spec:
   selector:
     matchLabels:
@@ -22,51 +21,35 @@ spec:
       # resolved through k8s service, set dns policy to cluster first
       dnsPolicy: ClusterFirstWithHostNet
       containers:
-        - name: driver-registrar
-          # This is necessary only for systems with SELinux, where
-          # non-privileged sidecar containers cannot access unix domain socket
-          # created by privileged CSI driver container.
-          securityContext:
-            privileged: true
-            allowPrivilegeEscalation: true
-          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.4.0
-          # FDC： 更新kubelet-registration-path参数中CSIDRIVER的名字
-          args:
-            - "--v=5"
-            - "--csi-address=/csi/csi.sock"
-            - "--kubelet-registration-path=/var/lib/kubelet/plugins/external-cephfs.csi.ceph.com/csi.sock"
-          env:
-            - name: KUBE_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          volumeMounts:
-            - name: socket-dir
-              mountPath: /csi
-            - name: registration-dir
-              mountPath: /registration
         - name: csi-cephfsplugin
           securityContext:
             privileged: true
             capabilities:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
-          # for stable functionality replace canary with latest release version
-          image: quay.io/cephcsi/cephcsi:v3.6-canary
-          # FDC： 更新drivername的名字
+          image: quay.io/cephcsi/cephcsi:v3.11-canary
           args:
             - "--nodeid=$(NODE_ID)"
             - "--type=cephfs"
             - "--nodeserver=true"
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--v=5"
-            - "--drivername=external-cephfs.csi.ceph.com"
+            - "--drivername=cephfs.csi.ceph.com"
             - "--enableprofiling=false"
             # If topology based provisioning is desired, configure required
             # node labels representing the nodes topology domain
             # and pass the label names below, for CSI to consume and advertise
             # its equivalent topology domain
             # - "--domainlabels=failure-domain/region,failure-domain/zone"
+            #
+            # Options to enable read affinity.
+            # If enabled Ceph CSI will fetch labels from kubernetes node and
+            # pass `read_from_replica=localize,crush_location=type:value` during
+            # CephFS mount command. refer:
+            # https://docs.ceph.com/en/latest/man/8/rbd/#kernel-rbd-krbd-options
+            # for more details.
+            # - "--enable-read-affinity=true"
+            # - "--crush-location-labels=topology.io/zone,topology.io/rack"
           env:
             - name: POD_IP
               valueFrom:
@@ -78,6 +61,12 @@ spec:
                   fieldPath: spec.nodeName
             - name: CSI_ENDPOINT
               value: unix:///csi/csi.sock
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          # - name: KMS_CONFIGMAP_NAME
+          #   value: encryptionConfig
           imagePullPolicy: "IfNotPresent"
           volumeMounts:
             - name: socket-dir
@@ -100,25 +89,47 @@ spec:
               mountPath: /dev
             - name: host-mount
               mountPath: /run/mount
-            # FDC: 移除ceph-config挂载
-            # - name: ceph-config
-            #   mountPath: /etc/ceph/
+            - name: ceph-config
+              mountPath: /etc/ceph/
             - name: ceph-csi-config
               mountPath: /etc/ceph-csi-config/
             - name: keys-tmp-dir
               mountPath: /tmp/csi/keys
             - name: ceph-csi-mountinfo
               mountPath: /csi/mountinfo
+            - name: ceph-csi-encryption-kms-config
+              mountPath: /etc/ceph-csi-encryption-kms-config/
+        - name: driver-registrar
+          # This is necessary only for systems with SELinux, where
+          # non-privileged sidecar containers cannot access unix domain socket
+          # created by privileged CSI driver container.
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1
+          args:
+            - "--v=1"
+            - "--csi-address=/csi/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/cephfs.csi.ceph.com/csi.sock"
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
         - name: liveness-prometheus
           securityContext:
             privileged: true
             allowPrivilegeEscalation: true
-          image: quay.io/cephcsi/cephcsi:v3.6-canary
-          # FDC： 更新metricsport为8682
+          image: quay.io/cephcsi/cephcsi:v3.11-canary
           args:
             - "--type=liveness"
             - "--endpoint=$(CSI_ENDPOINT)"
-            - "--metricsport=8682"
+            - "--metricsport=8681"
             - "--metricspath=/metrics"
             - "--polltime=60s"
             - "--timeout=3s"
@@ -136,8 +147,7 @@ spec:
       volumes:
         - name: socket-dir
           hostPath:
-            # FDC： 更新path参数中CSIDRIVER的名字
-            path: /var/lib/kubelet/plugins/external-cephfs.csi.ceph.com/
+            path: /var/lib/kubelet/plugins/cephfs.csi.ceph.com/
             type: DirectoryOrCreate
         - name: registration-dir
           hostPath:
@@ -171,25 +181,24 @@ spec:
             name: ceph-config
         - name: ceph-csi-config
           configMap:
-            # FDC： 更新ceph-csi-config的名字
-            name: external-ceph-csi-config
+            name: ceph-csi-config
         - name: keys-tmp-dir
           emptyDir: {
             medium: "Memory"
           }
         - name: ceph-csi-mountinfo
           hostPath:
-            # FDC: 更新path参数中CSIDRIVER的名字
-            path: /var/lib/kubelet/plugins/external-cephfs.csi.ceph.com/mountinfo
+            path: /var/lib/kubelet/plugins/cephfs.csi.ceph.com/mountinfo
             type: DirectoryOrCreate
+        - name: ceph-csi-encryption-kms-config
+          configMap:
+            name: ceph-csi-encryption-kms-config
 ---
 # This is a service to expose the liveness metrics
 apiVersion: v1
 kind: Service
 metadata:
   name: csi-metrics-cephfsplugin
-  # FDC: 增加命名空间
-  namespace: multi-csi
   labels:
     app: csi-metrics
 spec:
@@ -197,7 +206,6 @@ spec:
     - name: http-metrics
       port: 8080
       protocol: TCP
-      # FDC: 更新targetPort为8682
-      targetPort: 8682
+      targetPort: 8681
   selector:
     app: csi-cephfsplugin
