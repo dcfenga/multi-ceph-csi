@@ -13,6 +13,9 @@ spec:
       labels:
         app: csi-cephfsplugin
     spec:
+      # FDC：允许调度到Control Plane节点
+      tolerations:
+        - operator: Exists
       serviceAccountName: cephfs-csi-nodeplugin
       priorityClassName: system-node-critical
       hostNetwork: true
@@ -27,7 +30,7 @@ spec:
             capabilities:
               add: ["SYS_ADMIN"]
             allowPrivilegeEscalation: true
-          image: quay.io/cephcsi/cephcsi:v3.11-canary
+          image: quay.io/cephcsi/cephcsi:v3.11.0
           args:
             - "--nodeid=$(NODE_ID)"
             - "--type=cephfs"
@@ -89,16 +92,18 @@ spec:
               mountPath: /dev
             - name: host-mount
               mountPath: /run/mount
-            - name: ceph-config
-              mountPath: /etc/ceph/
+            # FDC: 取消挂载
+            #- name: ceph-config
+            #  mountPath: /etc/ceph/
             - name: ceph-csi-config
               mountPath: /etc/ceph-csi-config/
             - name: keys-tmp-dir
               mountPath: /tmp/csi/keys
             - name: ceph-csi-mountinfo
               mountPath: /csi/mountinfo
-            - name: ceph-csi-encryption-kms-config
-              mountPath: /etc/ceph-csi-encryption-kms-config/
+            # FDC: 取消挂载
+            #- name: ceph-csi-encryption-kms-config
+            #  mountPath: /etc/ceph-csi-encryption-kms-config/
         - name: driver-registrar
           # This is necessary only for systems with SELinux, where
           # non-privileged sidecar containers cannot access unix domain socket
@@ -108,7 +113,8 @@ spec:
             allowPrivilegeEscalation: true
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1
           args:
-            - "--v=1"
+            # FDC：调整日志级别到5
+            - "--v=5"
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/cephfs.csi.ceph.com/csi.sock"
           env:
@@ -176,9 +182,10 @@ spec:
         - name: host-mount
           hostPath:
             path: /run/mount
-        - name: ceph-config
-          configMap:
-            name: ceph-config
+        # FDC：取消volume创建
+        #- name: ceph-config
+        #  configMap:
+        #    name: ceph-config
         - name: ceph-csi-config
           configMap:
             name: ceph-csi-config
@@ -190,15 +197,17 @@ spec:
           hostPath:
             path: /var/lib/kubelet/plugins/cephfs.csi.ceph.com/mountinfo
             type: DirectoryOrCreate
-        - name: ceph-csi-encryption-kms-config
-          configMap:
-            name: ceph-csi-encryption-kms-config
+        # FDC：取消volume创建
+        #- name: ceph-csi-encryption-kms-config
+        #  configMap:
+        #    name: ceph-csi-encryption-kms-config
 ---
 # This is a service to expose the liveness metrics
 apiVersion: v1
 kind: Service
 metadata:
   name: csi-metrics-cephfsplugin
+  namespace: nebula-system
   labels:
     app: csi-metrics
 spec:

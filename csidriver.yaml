@@ -9,9 +9,11 @@
 apiVersion: storage.k8s.io/v1
 kind: CSIDriver
 metadata:
-  name: "cephfs.csi.ceph.com"
+  # FDC：去掉双引号
+  name: cephfs.csi.ceph.com
 spec:
-  attachRequired: false
+  # FDC： attachRequired只能为true，否则创建时异常： Invalid value: false, filed is immutable
+  attachRequired: true
   podInfoOnMount: false
   fsGroupPolicy: File
   seLinuxMount: true

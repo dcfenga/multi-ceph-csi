@@ -25,7 +25,7 @@ spec:
   selector:
     matchLabels:
       app: csi-cephfsplugin-provisioner
-  replicas: 3
+  replicas: 1
   template:
     metadata:
       labels:
@@ -45,7 +45,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: csi-cephfsplugin
-          image: quay.io/cephcsi/cephcsi:v3.11-canary
+          image: quay.io/cephcsi/cephcsi:v3.11.0
           args:
             - "--nodeid=$(NODE_ID)"
             - "--type=cephfs"
@@ -84,19 +84,22 @@ spec:
               readOnly: true
             - name: host-dev
               mountPath: /dev
-            - name: ceph-config
-              mountPath: /etc/ceph/
+            # FDC: 取消挂载
+            #- name: ceph-config
+            #  mountPath: /etc/ceph/
             - name: ceph-csi-config
               mountPath: /etc/ceph-csi-config/
             - name: keys-tmp-dir
               mountPath: /tmp/csi/keys
-            - name: ceph-csi-encryption-kms-config
-              mountPath: /etc/ceph-csi-encryption-kms-config/
+            # FDC: 取消挂载
+            #- name: ceph-csi-encryption-kms-config
+            #  mountPath: /etc/ceph-csi-encryption-kms-config/
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v4.0.1
           args:
+            # FDC： 调整日志级别到5
             - "--csi-address=$(ADDRESS)"
-            - "--v=1"
+            - "--v=5"
             - "--timeout=150s"
             - "--leader-election=true"
             - "--retry-interval-start=500ms"
@@ -115,7 +118,8 @@ spec:
           image: registry.k8s.io/sig-storage/csi-resizer:v1.10.1
           args:
             - "--csi-address=$(ADDRESS)"
-            - "--v=1"
+            # FDC： 调整日志级别到5
+            - "--v=5"
             - "--timeout=150s"
             - "--leader-election"
             - "--retry-interval-start=500ms"
@@ -132,7 +136,8 @@ spec:
           image: registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2
           args:
             - "--csi-address=$(ADDRESS)"
-            - "--v=1"
+            # FDC： 调整日志级别到5
+            - "--v=5"
             - "--timeout=150s"
             - "--leader-election=true"
             - "--extra-create-metadata=true"
@@ -144,8 +149,24 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /csi
+        # FDC： 增加csi-attacher组件
+        - name: csi-attacher
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.5.1
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election=true"
+            - "--retry-interval-start=500ms"
+            - "--default-fstype=ext4"
+          env:
+            - name: ADDRESS
+              value: /csi/csi-provisioner.sock
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
         - name: liveness-prometheus
-          image: quay.io/cephcsi/cephcsi:v3.11-canary
+          image: quay.io/cephcsi/cephcsi:v3.11.0
           args:
             - "--type=liveness"
             - "--endpoint=$(CSI_ENDPOINT)"
@@ -178,9 +199,10 @@ spec:
         - name: host-dev
           hostPath:
             path: /dev
-        - name: ceph-config
-          configMap:
-            name: ceph-config
+        # FDC：取消volume创建
+        #- name: ceph-config
+        #  configMap:
+        #    name: ceph-config
         - name: ceph-csi-config
           configMap:
             name: ceph-csi-config
@@ -188,6 +210,7 @@ spec:
           emptyDir: {
             medium: "Memory"
           }
-        - name: ceph-csi-encryption-kms-config
-          configMap:
-            name: ceph-csi-encryption-kms-config
+        # FDC：取消volume创建
+        #- name: ceph-csi-encryption-kms-config
+        #  configMap:
+        #    name: ceph-csi-encryption-kms-config
